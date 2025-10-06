@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
 // Avoid crashing the app during local development if env vars are missing.
 // We warn and use harmless fallbacks so the UI can still render.
 if (!supabaseUrl || !supabaseAnonKey) {

@@ -12,11 +12,28 @@ function normalizeQuery(q) {
 
 const router = Router();
 
+// GET /books - returns all books from the database
 router.get('/', (_req, res) => {
   const books = all(`
     SELECT * FROM books
-    ORDER BY id DESC
+    ORDER BY rating DESC NULLS LAST, id DESC
   `);
+  res.json(books);
+});
+
+// GET /books/genre/:genre - returns all books by genre
+router.get('/genre/:genre', (req, res) => {
+  const genre = normalizeQuery(req.params.genre);
+  
+  if (!genre) {
+    return res.status(400).json({ error: 'Genre parameter is required' });
+  }
+  
+  const books = all(
+    `SELECT * FROM books WHERE lower(genre) = @genre ORDER BY rating DESC NULLS LAST, id DESC`,
+    { genre }
+  );
+  
   res.json(books);
 });
 
@@ -49,9 +66,8 @@ router.get('/search', async (req, res) => {
 
     // Fallback to Google Books API
     const params = new URLSearchParams({ q: query, maxResults: '20' });
-    if (process.env.GOOGLE_BOOKS_API_KEY) {
-      params.set('key', process.env.GOOGLE_BOOKS_API_KEY);
-    }
+    const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
+    params.set('key', apiKey);
     const url = `https://www.googleapis.com/books/v1/volumes?${params.toString()}`;
     console.log(`[search] fetching Google Books: ${url}`);
     const resp = await fetch(url);

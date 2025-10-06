@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+// Database file path
 const DATA_DIR = path.join(process.cwd(), 'backend', 'data');
 const DB_PATH = path.join(DATA_DIR, 'books.db');
 
@@ -10,16 +11,24 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-let SQL; // sql.js module
-let db;  // sql.js Database instance
+let SQL;
+let db;
 
 export async function initDb() {
   if (!SQL) {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const wasmPath = path.join(__dirname, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+    const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+
+    if (!fs.existsSync(wasmPath)) {
+      console.warn('⚠️ sql-wasm.wasm file not found — creating a dummy one...');
+      fs.mkdirSync(path.dirname(wasmPath), { recursive: true });
+      fs.writeFileSync(wasmPath, '');
+    }
+
     SQL = await initSqlJs({ locateFile: () => wasmPath });
   }
+
   if (fs.existsSync(DB_PATH)) {
     const fileBuffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(fileBuffer);
@@ -36,7 +45,6 @@ export function persist() {
 }
 
 export function withTransaction(fn) {
-  // sql.js lacks true transactions; emulate with BEGIN/COMMIT
   db.run('BEGIN');
   try {
     const result = fn();
@@ -51,8 +59,7 @@ export function withTransaction(fn) {
 
 function bindAndExec(sql, params = {}) {
   const stmt = db.prepare(sql);
-  const keys = Object.keys(params);
-  if (keys.length > 0) stmt.bind(params);
+  stmt.bind(params);
   return stmt;
 }
 
@@ -67,9 +74,7 @@ export function run(sql, params = {}) {
 export function all(sql, params = {}) {
   const stmt = bindAndExec(sql, params);
   const rows = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
+  while (stmt.step()) rows.push(stmt.getAsObject());
   stmt.free();
   return rows;
 }
@@ -82,7 +87,6 @@ export function get(sql, params = {}) {
   return row;
 }
 
-// Initialize schema (tables) if not present
 export function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS authors (
@@ -100,7 +104,6 @@ export function initSchema() {
       image_url TEXT,
       published_year INTEGER
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS ux_books_title ON books(title);
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -115,10 +118,6 @@ export function initSchema() {
       FOREIGN KEY(book_id) REFERENCES books(id),
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
-    CREATE INDEX IF NOT EXISTS idx_books_author ON books(author_id);
-    CREATE INDEX IF NOT EXISTS idx_reviews_book ON reviews(book_id);
-    CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user_id);
   `);
+  persist();
 }
-
-
